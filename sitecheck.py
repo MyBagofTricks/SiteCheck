@@ -28,7 +28,7 @@ def loadconf(f_name):
 
 
 def portcheck(rhost, rport):
-    """Uses socket to test port 9111 from a dict. 
+    """Uses socket to test a specified port
     rhost (str) - ip or hostname of target
     rport (int) = port to test
     return False if fails, True if successful
@@ -41,11 +41,11 @@ def portcheck(rhost, rport):
         return False
     return True
 
-def callforhelp(site_down, creds):
+def callforhelp(site_down, creds, rport):
     """Sends an email via google api
     site_down(dict) - sites to email about. format {'site':'ip'}
     """
-    msg_text = "Cannot connect to site(s) on port 9111 for 10mins+"
+    msg_text = "Cannot connect to site(s) on port {port} for 10mins+".format(port=rport)
     for site in site_down.keys():
         msg_text+= "\n{site}\t{ip}".format(site=site, ip=site_down[site])
     msg_text += "\n\nInvestigate and contact support\n\nI AM A BOT - DO NOT REPLY"
@@ -58,23 +58,23 @@ def main():
     while True:
         site_down = {}
         for site in settings['DEST'].keys():
-            if portcheck(settings['DEST'][site], 9111) == False and portcheck('8.8.8.8',53) == True:
+            if portcheck(settings['DEST'][site], settings['CONF']['port']) == False and portcheck('8.8.8.8',53) == True:
                 site_down[site] = settings['DEST'][site]
         if site_down:
             for x in range(1,11):
                 for site in site_down.keys():
-                    if portcheck(settings['DEST'][site], 9111) == True:
+                    if portcheck(settings['DEST'][site], settings['CONF']['port']) == True:
                         site_down.pop(site)
                 print('[!] {} site(s) unreachable. Attempt {} of 10 {}'.format(
                     len(site_down), x, time.ctime()))
                 time.sleep(1)
             if portcheck('8.8.8.8', 53) == True:
-                callforhelp(site_down, settings['EMAIL'])
+                callforhelp(site_down, settings['EMAIL'], settings['CONF']['port'])
                 print("[!] Site(s) down: " + " ".join(site_down))
-                print("[ ] Sleeping for 6 hours", time.ctime())
-                time.sleep(18000)
-        print("[ ] Sleeping for 1 hour", time.ctime())
-        time.sleep(3600)
+                print("[ ] Sleeping for 4 hours", time.ctime())
+                time.sleep(16200)
+        print("[ ] Sleeping for 30 min", time.ctime())
+        time.sleep(1800)
             
 if __name__ == '__main__':
     main()

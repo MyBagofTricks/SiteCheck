@@ -7,6 +7,9 @@
 		"DEST5": "0.0.0.0",
 		"DEST6": "0.0.0.0"
 		},
+	"CONF": {
+		"port": 80
+		},
 	"EMAIL": {
 		"from": "foo@bar.foo",
 		"to": "foo@bar.foo",
