@@ -1,0 +1,15 @@
+{
+	"DEST": {
+		"DEST1": "0.0.0.0",
+		"DEST2": "0.0.0.0",
+		"DEST3": "0.0.0.0",
+		"DEST4": "0.0.0.0",
+		"DEST5": "0.0.0.0",
+		"DEST6": "0.0.0.0"
+		},
+	"EMAIL": {
+		"from": "foo@bar.foo",
+		"to": "foo@bar.foo",
+		"subject": "EMAIL SUBJECT LINE"
+		}
+}
