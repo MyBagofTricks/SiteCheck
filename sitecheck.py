@@ -53,6 +53,17 @@ def callforhelp(site_down, creds, rport):
         creds['from'], creds['to'], creds['subject'], msg_text)
 
 
+def downreminder(down_time):
+    # returns True if 4 hours have passed since down_time
+    if time.time() - down_time < 14400:
+        return False
+    else:
+        return True
+
+def engine():
+    pass
+
+
 def main():
     settings = loadconf('sitecheck.config.json')
     while True:
@@ -67,7 +78,7 @@ def main():
                         site_down.pop(site)
                 print('[!] {} site(s) unreachable. Attempt {} of 10 {}'.format(
                     len(site_down), x, time.ctime()))
-                time.sleep(1)
+                time.sleep(10)
             if portcheck('8.8.8.8', 53) == True:
                 callforhelp(site_down, settings['EMAIL'], settings['CONF']['port'])
                 print("[!] Site(s) down: " + " ".join(site_down))
