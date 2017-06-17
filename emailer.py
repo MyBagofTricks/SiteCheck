@@ -66,10 +66,10 @@ def sendmessage(service, user_id, message):
     try:
         message = (service.users().messages().send(userId=user_id, body=message)
                 .execute())
-        print ('Message Id: %s' % message['id'])
-        return message
+        return message['id']
     except errors.HttpError as error:
         print ('An error occurred: {error}'.format(error=error))
+        return error
 
 
 def createmessage(sender, to, subject, message_text):
@@ -98,7 +98,7 @@ def compose_and_send(sender, to, subject, message_text):
     http = credentials.authorize(httplib2.Http())
     service = discovery.build('gmail', 'v1', http=http)
     message = createmessage(sender, to, subject, message_text)
-    sendmessage(service, 'me', message)
+    return sendmessage(service, 'me', message)
 
 def main():
     from_email = input('Enter the from email address: ')

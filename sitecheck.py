@@ -41,6 +41,7 @@ def portcheck(rhost, rport):
         return False
     return True
 
+
 def callforhelp(site_down, creds, rport):
     """Sends an email via google api
     site_down(dict) - sites to email about. format {'site':'ip'}
@@ -49,8 +50,10 @@ def callforhelp(site_down, creds, rport):
     for site in site_down.keys():
         msg_text+= "\n{site}\t{ip}".format(site=site, ip=site_down[site])
     msg_text += "\n\nInvestigate and contact support\n\nI AM A BOT - DO NOT REPLY"
-    emailer.compose_and_send(
-        creds['from'], creds['to'], creds['subject'], msg_text)
+    msgid = emailer.compose_and_send(
+        creds['from'], creds['to'], creds['subject'], msg_text
+        )
+    return msgid
 
 
 def downreminder(down_time):
@@ -60,6 +63,7 @@ def downreminder(down_time):
     else:
         return True
 
+
 def engine():
     pass
 
@@ -67,23 +71,29 @@ def engine():
 def main():
     settings = loadconf('sitecheck.config.json')
     while True:
-        site_down = {}
+        site_down = {}    # {store:{ip:xx,lastoline:xx}}
         for site in settings['DEST'].keys():
             if portcheck(settings['DEST'][site], settings['CONF']['port']) == False and portcheck('8.8.8.8',53) == True:
-                site_down[site] = settings['DEST'][site]
+                site_down[site] = {
+                    'IP': settings['DEST'][site],'lastonline': time.time(),
+                    'lastemailed': 0,
+                    }
         if site_down:
             for x in range(1,11):
                 for site in site_down.keys():
                     if portcheck(settings['DEST'][site], settings['CONF']['port']) == True:
                         site_down.pop(site)
+                        # log here
                 print('[!] {} site(s) unreachable. Attempt {} of 10 {}'.format(
                     len(site_down), x, time.ctime()))
                 time.sleep(10)
             if portcheck('8.8.8.8', 53) == True:
-                callforhelp(site_down, settings['EMAIL'], settings['CONF']['port'])
-                print("[!] Site(s) down: " + " ".join(site_down))
-                print("[ ] Sleeping for 4 hours", time.ctime())
-                time.sleep(16200)
+                for site, value in site_down.items():
+                    if site_down[site]['lastemailed'] == 0 or downreminder(site_down[site]['lastemailed']) == True:
+                        msgid = callforhelp(site_down, settings['EMAIL'], settings['CONF']['port'])
+                        print("[!] Email sent! ID: {msgid} {ctime} {site} down since {lastonline}".format(
+                            msgid=msgid, ctime=time.ctime(), site=site, lastonline=site_down[site]['lastonline']
+                        ))
         print("[ ] Sleeping for 30 min", time.ctime())
         time.sleep(1800)
             
