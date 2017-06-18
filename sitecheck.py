@@ -5,10 +5,10 @@ import socket
 import smtplib
 import time
 import json
+from threading import Thread
 from os import path
 
 import emailer
-
 
 def loadconf(f_name):
     """ Checks for a json file, returns data if it exists, or else exits
@@ -70,14 +70,19 @@ def messagebuilder(name, ip, port, dtime):
     return msg_text
 
 
-def downreminder(dtime):
-    """returns True if 4 hours have passed since down_time
-    dtime (float) - epoc time
-    """
-    if time.time() - dtime < 14400:
-        return False
-    else:
-        return True
+def builtdown(sites, port, site_down):
+    for site, ip in sites.items():
+        if portcheck(ip, port) == False:
+            if site not in site_down.keys():
+                site_down[site] = {
+                    'ip': ip,
+                    'dtime': time.time(),
+                    'emailed': 0,
+                }
+    return site_down
+            
+            
+
 
 
 def engine():
@@ -85,42 +90,57 @@ def engine():
     sites = settings['DEST']
     port = settings['CONF']['port']
     creds = settings['EMAIL']
+    site_down = {}
 
     while True:
-        site_down = {}
-        for site, ip in sites.items():
-            if portcheck(ip, port) == False and portcheck('8.8.8.8',53) == True:
-                site_down[site] = {
-                    'ip': ip,
-                    'dtime': time.time(),
-                    'lastemail': 0,
-                    }
-                    # last func may be useful for fixing dict reset
-        if site_down:
-            # double check list x10, pop off any that have come online, but log
-            for x in range(1,11):
+        if portcheck('8.8.8.8', 53) == True:
+            for site, ip in sites.items():
+                if portcheck(ip, port) == False:
+                    if site not in site_down.keys():
+                        # Adds entry if none exists
+                        site_down[site] = {
+                            'ip': ip,
+                            'dtime': time.time(),
+                            'emailed': 0,
+                        }
+            if len(site_down) > 0:
                 for site, value in site_down.items():
-                    if portcheck(value['ip'], port) == True:
-                        site_down.pop(site)
-                        # log here
-                print('[!] {} site(s) unreachable. Attempt {} of 10 {}'.format(
-                    len(site_down), x, time.ctime()))
-                time.sleep(1)    # sleep bottleneck
-            if portcheck('8.8.8.8', 53) == True:
-                for site, value in site_down.items():
-                    if downreminder(value['lastemail']) == True:
+                    
+                    ## threading entry
+                    for x in range(1,11):
+                        print("[x] {time} {site} down. Attempting to connect {att} of 10".format(
+                            time=time.ctime(), site=site, att=x
+                        ))
+                        if portcheck(value['ip'], port) == True:
+                            site_down[site].pop()
+                            break
+                        time.sleep(1)    # Short sleep between attemps
+
+                    if time.time() - value['emailed'] > 14400:
                         normaltime = time.ctime(value['dtime'])
                         msg = messagebuilder(
                             site, value['ip'], port, normaltime
                         )
                         msgid = callforhelp(msg, settings['EMAIL'])
+                        value['emailed'] = time.time()
                         print(
                             "[!] Email sent! ID: {msgid} :: {site} down since {time}".format(
                                 msgid=msgid, ctime=time.ctime(), site=site, time=normaltime
                                 ))
+                    else:
+                        print('skipped site because it was emailed {} min ago'.format((time.time() - value['emailed'])//60))
 
-        print("[ ] Sleeping for 30 min", time.ctime())
-        time.sleep(1800)
+                    ## threading exit?
+            print("[ ] {time} Sleeping for 30mins".format(time=time.ctime()))
+            # time.sleep(1800)
+            time.sleep(11)
+        else:
+            print("[x] {time} Can't reach Google. Sleeping for an hour".format(
+                time=time.ctime()
+            ))
+            time.sleep(3600)
+        
+
 
 
 def main():
