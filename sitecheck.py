@@ -5,7 +5,9 @@ import socket
 import smtplib
 import time
 import json
+from multiprocessing import Process
 from threading import Thread
+from queue import Queue
 from os import path
 
 import emailer
@@ -33,6 +35,7 @@ def portcheck(host, port):
     rport (int) = port to test
     return False if fails, True if successful
     """
+    
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(10)
     result = s.connect_ex((host, port))
@@ -70,19 +73,26 @@ def messagebuilder(name, ip, port, dtime):
     return msg_text
 
 
-def builtdown(sites, port, site_down):
-    for site, ip in sites.items():
-        if portcheck(ip, port) == False:
-            if site not in site_down.keys():
-                site_down[site] = {
-                    'ip': ip,
-                    'dtime': time.time(),
-                    'emailed': 0,
-                }
-    return site_down
-            
-            
-
+def isalive(ip, port, retry):
+    """Returns True if site responds, false if not
+    ip(str) - ip address of target
+    port(int) - port address to use
+    retry(int) - number of times to retry
+    site_down(dict) - sites already reporting down
+    
+    """
+    for x in range(1, 11):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(10)
+        result = s.connect_ex((ip, port))
+        s.close()
+        if not result:
+            return True
+        else:
+            print(
+                "[x] {time} Error connecting to {ip} {x} out of 10".format(
+                    time=time.ctime(), ip=ip, x=x))
+    return False
 
 
 def engine():
@@ -91,49 +101,50 @@ def engine():
     port = settings['CONF']['port']
     creds = settings['EMAIL']
     site_down = {}
+    retry = 10
+
+    for site, ip in sites.items():
+        sites[site] = {'ip': ip, 'dtime': 0, 'emailed': 0}
 
     while True:
-        if portcheck('8.8.8.8', 53) == True:
-            for site, ip in sites.items():
-                if portcheck(ip, port) == False:
-                    if site not in site_down.keys():
-                        # Adds entry if none exists
-                        site_down[site] = {
-                            'ip': ip,
-                            'dtime': time.time(),
-                            'emailed': 0,
-                        }
-            if len(site_down) > 0:
-                for site, value in site_down.items():
+        if isalive('8.8.8.8', 53, retry) == True:
+            
+            jobs = []
+
+            for site, val in sites.items():
+                ts = Thread(target=isalive, args=(val['ip'], port, retry))
+                jobs.append(ts)
+            for j in jobs:
+                j.start()
+            for j in jobs:
+                j.join()
+            print(jobs)
+
+            status = isalive(val['ip'], port, retry)    # thread this
+
+            if status == False and sites[site]['dtime'] == 0:
+                sites[site]['dtime'] = time.time()
+
+            for site, val in sites.items():
+                if val['dtime'] > 0 and time.time() - val['emailed'] > 14400:
+                    normaltime = time.ctime(val['dtime'])
+                    msg = messagebuilder(site, val['ip'], port, normaltime)
+                    msgid = callforhelp(msg, settings['EMAIL'])
+                    val['emailed'] = time.time()
+                    print(
+                        "[!] Email sent! ID: {msgid} :: {site} down since {time}".format(
+                            msgid=msgid, ctime=time.ctime(), site=site, time=normaltime)
+                            )
+                elif val['dtime'] > 0 and time.time() - val['emailed'] < 14400:
+                    print('skipped site because it was emailed {} min ago'.format(
+                        (time.time() - val['emailed'])//60))
+
                     
-                    ## threading entry
-                    for x in range(1,11):
-                        print("[x] {time} {site} down. Attempting to connect {att} of 10".format(
-                            time=time.ctime(), site=site, att=x
-                        ))
-                        if portcheck(value['ip'], port) == True:
-                            site_down[site].pop()
-                            break
-                        time.sleep(1)    # Short sleep between attemps
+                
 
-                    if time.time() - value['emailed'] > 14400:
-                        normaltime = time.ctime(value['dtime'])
-                        msg = messagebuilder(
-                            site, value['ip'], port, normaltime
-                        )
-                        msgid = callforhelp(msg, settings['EMAIL'])
-                        value['emailed'] = time.time()
-                        print(
-                            "[!] Email sent! ID: {msgid} :: {site} down since {time}".format(
-                                msgid=msgid, ctime=time.ctime(), site=site, time=normaltime
-                                ))
-                    else:
-                        print('skipped site because it was emailed {} min ago'.format((time.time() - value['emailed'])//60))
-
-                    ## threading exit?
             print("[ ] {time} Sleeping for 30mins".format(time=time.ctime()))
             # time.sleep(1800)
-            time.sleep(11)
+            time.sleep(1)
         else:
             print("[x] {time} Can't reach Google. Sleeping for an hour".format(
                 time=time.ctime()
