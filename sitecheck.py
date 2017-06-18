@@ -93,8 +93,7 @@ def engine():
     for site, ip in settings['DEST'].items():
         sites[ip] = {
             'name': site,
-            'dtime': False,
-            # 'dtime': portdown(ip, port),
+            'dtime': portdown(ip, port),
             'emailed': False,
             }
 
