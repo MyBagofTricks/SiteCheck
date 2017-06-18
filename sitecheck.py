@@ -114,11 +114,11 @@ def engine():
             for site, val in sites.items():
                 ts = Thread(target=isalive, args=(val['ip'], port, retry))
                 jobs.append(ts)
-            for j in jobs:
-                j.start()
+                ts.start()
             for j in jobs:
                 j.join()
-            print(jobs)
+            for x in jobs:
+                print(type(x))
 
             status = isalive(val['ip'], port, retry)    # thread this
 
