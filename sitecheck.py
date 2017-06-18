@@ -5,13 +5,10 @@ import socket
 import smtplib
 import time
 import json
-import multiprocessing
-from multiprocessing import Process
-from threading import Thread
-from queue import Queue
 from os import path
 
 import emailer
+
 
 def loadconf(f_name):
     """ Checks for a json file, returns data if it exists, or else exits
@@ -43,7 +40,6 @@ def portdown(host, port):
     if result:
         return time.time()
     return False
-
 
 
 def callforhelp(msg, creds):
@@ -79,15 +75,13 @@ def isdown(ip, port, retry):
     ip(str) - ip address of target
     port(int) - port address to use
     retry(int) - number of times to retry
-    site_down(dict) - sites already reporting down
-    
     """
     for x in range(1, retry+1):
-        if portdown(ip, port):
-            return (ip, time.time())
-            print("[x] {time} Error connecting to {ip} {x} out of {retry}".format(
-                time=time.ctime(), ip=ip, x=x, retry=retry))
-    return (ip, False)
+        if not portdown(ip, port):
+            return (ip, False)
+        print("[x] {time} Error connecting to {ip} {x} out of {retry}".format(
+            time=time.ctime(), ip=ip, x=x, retry=retry))
+    return (ip, time.time())
 
         
 def engine():
@@ -96,16 +90,17 @@ def engine():
     creds = settings['EMAIL']
     retry = 2
     sites = {}
-
     for site, ip in settings['DEST'].items():
         sites[ip] = {
             'name': site,
-            'dtime': portdown(ip, port),
-            'emailed': 0
+            'dtime': False,
+            # 'dtime': portdown(ip, port),
+            'emailed': False,
             }
 
     while True:
         if portdown('8.8.8.8', 53) == False:
+
             for ip, val in sites.items():
                 down = isdown(ip, port, retry)
                 if down[1]:
@@ -138,8 +133,6 @@ def engine():
             ))
             time.sleep(3600)
         
-
-
 
 def main():
     engine()
