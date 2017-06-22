@@ -112,7 +112,8 @@ def updatedict(sites, result):
     return sites
 
 
-def try_email(sites, creds):
+def send_email(sites, creds):
+    
 
     for ip, val in sites.items():
         if val['down']:
@@ -137,7 +138,7 @@ def main(sites, port, creds, retry):
 
         sites = updatedict(sites, result)
 
-        try_email(sites, creds)
+        send_email(sites, creds)
 
         alert('-', "Scan complete. Sleeping for 15mins".format(time=time.ctime()))
         time.sleep(900)
