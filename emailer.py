@@ -23,6 +23,7 @@ SCOPES = 'https://www.googleapis.com/auth/gmail.send'
 CLIENT_SECRET_FILE = 'client_secret_email.json'
 APPLICATION_NAME = 'Sitecheck Alert System'
 
+
 def get_credentials():
     """Gets valid user credentials from storage.
 
@@ -45,7 +46,7 @@ def get_credentials():
         flow.user_agent = APPLICATION_NAME
         if flags:
             credentials = tools.run_flow(flow, store, flags)
-        else: # Needed only for compatibility with Python 2.6
+        else:    # Needed only for compatibility with Python 2.6
             credentials = tools.run(flow, store)
         print('Storing credentials to ' + credential_path)
     return credentials
@@ -65,10 +66,10 @@ def sendmessage(service, user_id, message):
     """
     try:
         message = (service.users().messages().send(userId=user_id, body=message)
-                .execute())
+                   .execute())
         return message['id']
     except errors.HttpError as error:
-        print ('An error occurred: {error}'.format(error=error))
+        print('An error occurred: {error}'.format(error=error))
         return error
 
 
@@ -99,6 +100,7 @@ def compose_and_send(sender, to, subject, message_text):
     service = discovery.build('gmail', 'v1', http=http)
     message = createmessage(sender, to, subject, message_text)
     return sendmessage(service, 'me', message)
+
 
 def main():
     from_email = input('Enter the from email address: ')
