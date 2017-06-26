@@ -31,10 +31,10 @@ def loadconf(f_name):
                 data = json.load(json_file)
                 return data
             except ValueError as err:
-                logger.info("Cannot continue: {err}".format(err=err))
+                logger.error("Cannot continue: {err}".format(err=err))
                 raise SystemExit
     else:
-        logger.info(
+        logger.error(
             "{f_name} not found. Check the readme. Exiting".format(f_name=f_name))
         raise SystemExit
 
