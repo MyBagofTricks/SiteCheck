@@ -4,5 +4,5 @@ __pycache__/
 *$py.class
 
 # Custom
-sitecheck.config.json
+config.ini
 client_secret_email.json

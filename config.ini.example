@@ -1,0 +1,17 @@
+[sites]
+# Replace Name and IP (or fqdn)
+NAME1 = 0.0.0.0
+NAME2 = 0.0.0.0
+NAME2 = 0.0.0.0
+
+
+[settings]
+# Choose a default port which is open at all sites
+port = 9111
+retry = 5
+
+[email]
+# Replace Email to/from and subject
+from = foo@notarealemailaddress.local
+to = bar@notarealemailaddress.local
+subject = Emergency Scary Message

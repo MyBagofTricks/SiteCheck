@@ -103,12 +103,12 @@ def compose_and_send(sender, to, subject, message_text):
 
 
 def main():
-    from_email = input('Enter the from email address: ')
-    to_email = input('Enter the destination email address: ')
-    subject = 'SiteCheck Test Mail'
-    body = 'This is a test message to trigger the OAuth2 process'
     compose_and_send(from_email, to_email, subject, body)
 
 
 if __name__ == '__main__':
+    from_email = input('Enter the from email address: ')
+    to_email = input('Enter the destination email address: ')
+    subject = 'SiteCheck Test Mail'
+    body = 'This is a test message to trigger the OAuth2 process'
     main()
