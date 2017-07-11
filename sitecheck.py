@@ -14,7 +14,7 @@ logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.CRITICAL)
 logging.getLogger('googleapiclient.discovery').setLevel(logging.CRITICAL)
 logging.basicConfig(format='%(asctime)s %(levelname)-4s %(message)s')
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 def parse_config(config_file):
@@ -44,8 +44,7 @@ def portdown(ip, port):
 
 
 def check_remote_status(ip, port, retry):
-    """ Attempts to connect to an ip with 10 retries if the ip/port are
-    not responding
+    """ Attempts to connect to an ip with 10 retries if the ip/port are not responding
 
     ip(str) - ip address of target
 
@@ -55,14 +54,14 @@ def check_remote_status(ip, port, retry):
 
     Returns time.time() if offline, True if online
     """
-    logger.debug("Site {} started".format(ip))
+    logger.debug("Started Site {}".format(ip))
     for x in range(1, retry + 1):
         if not portdown(ip, port):
             break
     else:
-        logger.debug("Site  {} complete".format(ip))
+        logger.debug("Complete Site {}".format(ip))
         return ip, time.time()
-    logger.debug("Site {} complete".format(ip))
+    logger.debug("Complete Site {}".format(ip))
     return ip, False
 
 
@@ -71,49 +70,11 @@ def internet_working(ip='8.8.8.8', port=53):
     return not portdown(ip, port)
 
 
-def update_sites(sites, result):
-    """Updates a dict with values from a tuple
-    
-    sites(dict) - tracks which stores are up/down
-    
-    result(tup) - in the format of ip, down). Down is False if site up
-    
-    Return the updated sites(dict) """
-    sites_down = []
-    for ip, down in result:
-        if down:
-            sites_down.append(sites[ip]['name'])
-            if not sites[ip].get('down'):
-                sites[ip]['down'] = down
-        else:
-            sites[ip]['down'] = False
-    if sites_down:
-        logger.warning("{down} currently offline.".format(
-            down=", ".join(sites_down)))
-    return sites
 
-
-def total_down(sites):
-    """Return a string of sites which are not online, based on sites(dict)"""
-    down = ", ".join(val['name'] for val in sites.values() if val['down'])
-    if down:
-        return down
-    else:
-        return None
 
 
 def build_body(name, down, ip, port):
-    """Builds a generic email template
-
-    name(str) - site's name
-
-    down(long) - epoc time of last time the site was online
-
-    ip(str) - ip address of site
-
-    port(int) - port scanned
-
-    Returns the email body text"""
+    """Return email body text (str) based on parameters name(str), down(long),, ip(str), port(int)"""
     return (
         "WARNING! {name} IS OFFLINE!\nLast online {down}"
         "Cannot connect to {ip}:{port}\n\n"
@@ -154,10 +115,10 @@ def send_email(name, ip, port, down, creds):
 
 def engine(sites, port, creds, retry):
     if internet_working():
+        logger.info('Scan started')
         with multiprocessing.Pool(processes=3) as pool:
             result = pool.starmap(
-                check_remote_status, ((ip, port, retry)
-                                      for ip in sites.keys()),
+                check_remote_status, ((ip, port, retry) for ip in sites.keys()),
             )
         for ip, down in result:
             if not sites[ip].get('down'):
@@ -165,20 +126,18 @@ def engine(sites, port, creds, retry):
             if down and not recently_emailed(sites[ip].get('emailed', 0)):
                 send_email(sites[ip]['name'], ip, port, sites[ip]['down'], creds)
                 sites[ip]['emailed'] = time.time()
-                logger.info('{name} down. Email sent'.format(name=sites[ip]['name']))
+                logger.warning('{name} down. Email sent'.format(name=sites[ip]['name']))
     else:
-        logger.error(
-            "Google unreachable. Check internet connection.")
+        logger.error("Google unreachable. Check internet connection.")
     return sites
         
 
 def main(settings):
-
     sites, port, creds, retry = parse_config(settings)
     while True:
         sites = engine(sites, port, creds, retry)
-        time.sleep(10)
-        
+        time.sleep(900)
+
 
 if __name__ == '__main__':
     from argparse import ArgumentParser

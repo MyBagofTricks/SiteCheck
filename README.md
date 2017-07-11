@@ -3,6 +3,7 @@ Simple scanner to check ip status
 
 ## Requires:
 - Gmail account 
+- Linux environment
 - Python3
   - httplib2
   - google-api-python-client
@@ -16,3 +17,4 @@ Simple scanner to check ip status
 
 ## TO DO
 - [ ] Adjust timeouts
+- [ ] Add Windows support
