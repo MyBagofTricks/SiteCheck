@@ -2,7 +2,6 @@
 Simple scanner to check ip status
 
 ## Requires:
-- Linux environment
 - Gmail account 
 - Python3
   - httplib2
@@ -17,5 +16,3 @@ Simple scanner to check ip status
 
 ## TO DO
 - [ ] Adjust timeouts
-- [ ] Add port selection
-- [ ] Revamp email text

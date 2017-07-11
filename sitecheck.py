@@ -12,19 +12,16 @@ import emailer
 
 logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.CRITICAL)
 logging.getLogger('googleapiclient.discovery').setLevel(logging.CRITICAL)
+logging.basicConfig(format='%(asctime)s %(levelname)-4s %(message)s')
 logger = logging.getLogger(__name__)
-handler = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s %(levelname)-4s %(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.DEBUG)
 
 
 def parse_config(config_file):
+    """ Accepts INI file, returns sites(dict), port(int), creds(dict), retry(int)"""
     config = configparser.ConfigParser()
     config.read(config_file)
-    """ Accepts a INI file, returns sites(dict), port(int), creds(dict), retry(int)"""
-    sites = {ip: {'name': site, 'emailed': False} for site, ip in config['sites'].items()}
+    sites = {ip: {'name': site} for site, ip in config['sites'].items()}
     port = int(config['settings'].get('port'))
     creds = config['email']
     retry = int(config['settings'].get('retry'))
@@ -58,14 +55,14 @@ def check_remote_status(ip, port, retry):
 
     Returns time.time() if offline, True if online
     """
-    logger.debug("Site {} check started".format(ip))
+    logger.debug("Site {} started".format(ip))
     for x in range(1, retry + 1):
         if not portdown(ip, port):
             break
     else:
-        logger.debug("Site  {} check complete".format(ip))
+        logger.debug("Site  {} complete".format(ip))
         return ip, time.time()
-    logger.debug("Site {} check complete".format(ip))
+    logger.debug("Site {} complete".format(ip))
     return ip, False
 
 
@@ -131,7 +128,7 @@ def build_body(name, down, ip, port):
 
 
 def recently_emailed(emailed):
-    """Return True if emailed(float) is less than 4hours from time.time, else False"""
+    """Return True if emailed(float epoc time) is less than 4hours ago, else False"""
     return time.time() - emailed < 14400
 
 
@@ -156,20 +153,19 @@ def send_email(name, ip, port, down, creds):
     )
 
 def engine(sites, port, creds, retry):
-
     if internet_working():
         with multiprocessing.Pool(processes=3) as pool:
             result = pool.starmap(
                 check_remote_status, ((ip, port, retry)
                                       for ip in sites.keys()),
             )
-        site_status = update_sites(sites, result)
-        for ip, v in site_status.items():
-            if v.get('down'):
-                if not recently_emailed(v['emailed']):
-                    send_email(v['name'], ip, port, v['down'], creds)
-                    site_status[ip]['emailed'] = time.time()
-                    logger.info('{name} down. Email sent'.format(name=v['name']))
+        for ip, down in result:
+            if not sites[ip].get('down'):
+                sites[ip]['down'] = down
+            if down and not recently_emailed(sites[ip].get('emailed', 0)):
+                send_email(sites[ip]['name'], ip, port, sites[ip]['down'], creds)
+                sites[ip]['emailed'] = time.time()
+                logger.info('{name} down. Email sent'.format(name=sites[ip]['name']))
     else:
         logger.error(
             "Google unreachable. Check internet connection.")
@@ -181,7 +177,7 @@ def main(settings):
     sites, port, creds, retry = parse_config(settings)
     while True:
         sites = engine(sites, port, creds, retry)
-        time.sleep(900)
+        time.sleep(10)
         
 
 if __name__ == '__main__':
