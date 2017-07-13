@@ -9,6 +9,8 @@ NAME2 = 0.0.0.0
 # Choose a default port which is open at all sites
 port = 9111
 retry = 5
+quiet_start = 23
+quiet_stop = 5
 
 [email]
 # Replace Email to/from and subject

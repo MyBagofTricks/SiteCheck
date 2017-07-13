@@ -19,13 +19,12 @@ logger.setLevel(logging.INFO)
 
 def parse_config(config_file):
     """ Accepts INI file, returns sites(dict), port(int), creds(dict), retry(int)"""
-    config = configparser.ConfigParser()
+    config = configparser.SafeConfigParser()
     config.read(config_file)
     sites = {ip: {'name': site} for site, ip in config['sites'].items()}
-    port = int(config['settings'].get('port'))
-    creds = config['email']
-    retry = int(config['settings'].get('retry'))
-    return sites, port, creds, retry
+    settings = config['settings']
+    email_creds = config['email']
+    return sites, settings, email_creds
 
 
 def portdown(ip, port):
@@ -70,9 +69,6 @@ def internet_working(ip='8.8.8.8', port=53):
     return not portdown(ip, port)
 
 
-
-
-
 def build_body(name, down, ip, port):
     """Return email body text (str) based on parameters name(str), down(long),, ip(str), port(int)"""
     return (
@@ -113,7 +109,22 @@ def send_email(name, ip, port, down, creds):
         creds['from'], creds['to'], creds['subject'], body
     )
 
-def engine(sites, port, creds, retry):
+
+def quiet_hours(start, stop, time_to_test=int(time.strftime("%H"))):
+    """Return True if time_to_test(int) is between start(int) and stop(int)"""
+    if time_to_test >= start or time_to_test <= stop:
+        return True
+    else:
+        return False
+
+
+def engine(sites, config, creds):
+    
+    port = int(config.get('port'))
+    retry = int(config.get('retry'))
+    quiet_start = int(config.get('quiet_start'))
+    quiet_stop = int(config.get('quiet_stop'))
+
     if internet_working():
         logger.info('Scan started')
         with multiprocessing.Pool(processes=3) as pool:
@@ -121,21 +132,25 @@ def engine(sites, port, creds, retry):
                 check_remote_status, ((ip, port, retry) for ip in sites.keys()),
             )
         for ip, down in result:
-            if not sites[ip].get('down'):
-                sites[ip]['down'] = down
-            if down and not recently_emailed(sites[ip].get('emailed', 0)):
-                send_email(sites[ip]['name'], ip, port, sites[ip]['down'], creds)
-                sites[ip]['emailed'] = time.time()
-                logger.warning('{name} down. Email sent'.format(name=sites[ip]['name']))
+            if down:
+                if not sites[ip].get('down'):
+                    sites[ip]['down'] = down
+                if not quiet_hours(quiet_start, quiet_stop):
+                    if not recently_emailed(sites[ip].get('emailed', 0)):
+                        send_email(sites[ip]['name'], ip, port, sites[ip]['down'], creds)
+                        sites[ip]['emailed'] = time.time()
+                        logger.warning('{name} down. Email sent'.format(name=sites[ip]['name']))
+                else:
+                    logger.warning("{} is down, but quiet hours in effect".format(sites[ip]['name']))
     else:
         logger.error("Google unreachable. Check internet connection.")
     return sites
         
 
-def main(settings):
-    sites, port, creds, retry = parse_config(settings)
+def main(config_file):
+    sites, config, email_creds = parse_config(config_file)
     while True:
-        sites = engine(sites, port, creds, retry)
+        sites = engine(sites, config, email_creds)
         time.sleep(900)
 
 
@@ -144,5 +159,5 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('configuration_file', nargs='?')
     args = parser.parse_args()
-    settings = (args.configuration_file or 'config.ini')
-    main(settings)
+    config_file = (args.configuration_file or 'config.ini')
+    main(config_file)
