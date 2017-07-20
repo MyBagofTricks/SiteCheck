@@ -111,11 +111,8 @@ def send_email(name, ip, port, down, creds):
 
 
 def quiet_hours(start, stop, time_to_test=int(time.strftime("%H"))):
-    """Return True if time_to_test(int) is between start(int) and stop(int)"""
-    if time_to_test >= start or time_to_test <= stop:
-        return True
-    else:
-        return False
+    """Return True if time_to_test(int) is between start(int), stop(int), time_to_test(int)"""
+    return time_to_test >= start or time_to_test <= stop
 
 
 def engine(sites, config, creds):

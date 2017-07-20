@@ -16,5 +16,4 @@ Simple scanner to check ip status
 4. Run 'sitecheck.py'
 
 ## TO DO
-- [ ] Adjust timeouts
 - [ ] Add Windows support
