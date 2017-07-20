@@ -4,7 +4,7 @@ Simple scanner to check ip status
 ## Requires:
 - Gmail account 
 - Linux environment
-- Python3
+- Python 3.6 -- install the following via pip
   - httplib2
   - google-api-python-client
   - oauth2client
