@@ -7,6 +7,7 @@ import configparser
 import os
 import logging
 import multiprocessing
+from functools import partial
 
 import emailer
 
@@ -42,31 +43,34 @@ def portdown(ip, port):
     return True if result else False
 
 
-def check_remote_status(ip, port, retry):
+def check_site_status(ip, port, retry=10):
     """ Attempts to connect to an ip with 10 retries if the ip/port are not responding
 
     ip(str) - ip address of target
 
     port(int) - port address to use
 
-    retry(int) - number of times to retry
+    retry(int) - (optional) number of times to retry
 
     Returns time.time() if offline, True if online
     """
-    logger.debug(f"Started Site {ip}")
+    logger.debug(f"{ip} Started")
     for x in range(1, retry + 1):
-        if not portdown(ip, port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(10)
+            result = s.connect_ex((ip, port))
+        if not result:
             break
-    else:
-        logger.debug(f"Complete Site {ip}")
-        return ip, time.time()
-    logger.debug(f"Complete Site {ip}")
-    return ip, False
+        else:
+            logger.debug(f'{ip} Complete')
+            return ip, time.time()
+    logger.debug(f'{ip} Complete')
+    return ip, None
 
 
 def internet_working(ip='8.8.8.8', port=53):
     """Checks if socket can connect to a remote ip, Google DNS by default"""
-    return not portdown(ip, port)
+    return not check_site_status(ip, port)[1]
 
 
 def recently_emailed(emailed):
@@ -123,9 +127,9 @@ def engine(sites, config, creds):
         logger.info('Scan started')
         with multiprocessing.Pool(processes=3) as pool:
             result = pool.starmap(
-                check_remote_status, ((ip, port, retry)
-                                      for ip in sites.keys()),
-            )
+                check_site_status, ((ip, port)
+                for ip in sites.keys()),
+                )
         for ip, down in result:
             if down:
                 if not sites[ip].get('down'):
