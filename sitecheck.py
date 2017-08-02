@@ -125,7 +125,7 @@ def engine(sites, config, creds):
     quiet_stop = int(config.get('quiet_stop'))
     if internet_working():
         logger.info('Scan started')
-        with multiprocessing.Pool(processes=3) as pool:
+        with multiprocessing.Pool(processes=10) as pool:
             result = pool.starmap(
                 check_site_status, ((ip, port)
                 for ip in sites.keys()),
