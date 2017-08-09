@@ -116,7 +116,8 @@ def engine(sites, config, creds):
                         logger.info(f"{sites[ip]['name']} down. Email sent")
                 else:
                     logger.info(
-                        f"{sites[ip]['name']} is down, but quiet hours in effect")
+                        f"{sites[ip]['name']} down, but quiet hours in effect"
+                        )
             elif not down and 'down' in sites[ip]:
                 sites[ip].pop('down')
     else:
@@ -129,7 +130,7 @@ def main(config_file):
     sites, config, email_creds = parse_config(config_file)
     while True:
         sites = engine(sites, config, email_creds)
-        time.sleep(30)
+        time.sleep(900)
 
 
 if __name__ == '__main__':
