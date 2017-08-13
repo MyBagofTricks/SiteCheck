@@ -95,13 +95,13 @@ def createmessage(sender, to, subject, message_text):
     return {'raw': base64.urlsafe_b64encode(mes2.encode('utf-8')).decode('ascii')}
 
 
-def compose_and_send(sender, to, subject, message_text, flags=None, credentials=False):
+def compose_and_send(to, subject, message_text, flags=None, credentials=False):
     """Sends an email via the Gmail API. Return Message ID"""
     if not credentials:
         credentials = get_credentials(flags)
     http = credentials.authorize(httplib2.Http())
     service = discovery.build('gmail', 'v1', http=http)
-    message = createmessage(sender, to, subject, message_text)
+    message = createmessage('me', to, subject, message_text)
     return sendmessage(service, 'me', message)
 
 
@@ -113,10 +113,9 @@ def main():
         to_email = input('Enter the destination email address: ')
         subject = 'SiteCheck Test Mail'
         body = 'This is a test message to trigger the OAuth2 process'
-        compose_and_send('me', to_email, subject, body, flags, credentials)
+        compose_and_send(to_email, subject, body, flags, credentials)
     print("Complete! Goodbye...")
     
-
 
 if __name__ == '__main__':
     main()

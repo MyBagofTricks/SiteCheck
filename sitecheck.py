@@ -125,13 +125,11 @@ def send_email(body, creds):
 
     body(str) - body text of the e-mail
 
-    creds(dict) - contains to, from, subject fields
+    creds(dict) - contains to and subject fields
 
     Returns the message id if sucessful
     """
-    return emailer.compose_and_send(
-        creds['from'], creds['to'], creds['subject'], body
-    )
+    return emailer.compose_and_send(creds['to'], creds['subject'], body)
 
 
 def engine(sites, creds, flags):

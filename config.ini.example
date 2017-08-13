@@ -6,7 +6,6 @@ NAME2 = 0.0.0.0
 
 [email]
 # Replace Email to/from and subject
-from = foo@notarealemailaddress.local
 to = bar@notarealemailaddress.local
 subject = Emergency Scary Message
 advice = Follow up suggestions, contact info etc. To use multiple
