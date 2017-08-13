@@ -1,32 +1,66 @@
 #!/usr/bin/env python3
-# Checks the status of ips by connecting to a port and reporting on the result
 
-import socket
-import time
+"""Sitecheck - Basic Port Scanner 
+Scans multiple sites by ip and a specified port
+Reads settings from config.ini
+"""
 import configparser
-import os
 import logging
 import multiprocessing
+import socket
+import time
 from functools import partial
 
 import emailer
 
 logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.CRITICAL)
 logging.getLogger('googleapiclient.discovery').setLevel(logging.CRITICAL)
-logging.basicConfig(format='%(asctime)s %(levelname)-4s %(message)s')
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logging.basicConfig(format='[%(asctime)s] [%(levelname)s] -- %(message)s')
+LOGGER = logging.getLogger(__name__)
+LOGGER.setLevel(logging.INFO)
 
 
 def parse_config(config_file):
-    """ Accepts INI file, returns sites(dict), port(int), creds(dict), retry(int)"""
+    """ Accepts INI file, returns sites(dict), creds(dict)"""
     config = configparser.SafeConfigParser()
-    config.read(config_file)
-    sites = {ip: {'name': site} for site, ip in config['sites'].items()}
-    return sites, config['settings'], config['email']
+    try:
+        config.read(config_file)
+        sites = {ip: {'name': site} for site, ip in config['sites'].items()}
+        email = config['email']
+    except Exception as err:
+        print(f'Error in {config_file} {err} Check formatting in config.ini.example')
+        raise SystemExit
+    return sites, email
 
 
-def check_site_status(ip, port, retry=5):
+def parse_args():
+    """Parses arguments to Return ArgumentParser object"""    
+    import argparse
+    parser = argparse.ArgumentParser(description="Sitecheck - Yet Another Port Scanner")
+    parser.add_argument("-c", "--config", 
+                        help="Configuration file - Default=config.ini",
+                        default="config.ini")
+    parser.add_argument("-p", "--port", type=int,
+                        help="Port to scan - Default=9111",
+                        default=9111)
+    parser.add_argument("-proc", "--processes", type=int,
+                        help="Number of processes to use - Default=3",
+                        default=3)
+    parser.add_argument("-q", "--quiet", type=int, nargs=2,
+                        help='Start and End of quiet hours Off by Default.\
+                        Format \"-q 1 5\"',
+                        default=False)
+    parser.add_argument("-r", "--retry", type=int,
+                        help="Number of retries before assuming site is down - Default=5",
+                        default=5)
+    parser.add_argument("-s", "--sleep", type=int,
+                        help="Time in seconds between scans - Default=900 (15min)",
+                        default=900)
+    return parser.parse_args()
+    
+
+
+def check_site_status(ip, port, retry):
     """ Attempts to connect to an ip with 10 retries if the ip/port are not responding
 
     ip(str) - ip address of target
@@ -37,20 +71,16 @@ def check_site_status(ip, port, retry=5):
 
     Return time.time() if offline, True if online
     """
+    LOGGER.debug(f"{ip:<16} Scanning")
     for x in range(1, retry+1):
-        logger.debug(f"{ip} Scanning")
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(10)
             result = s.connect_ex((ip, port))
-        logger.debug(f'{ip} Completed')
         if not result:
+            LOGGER.debug(f'{ip:<16} Completed')
             return ip, None
+        LOGGER.debug(f'{ip:<16} OFFLINE {x} of {retry}')
     return ip, time.time()
-
-
-def internet_working(ip='8.8.8.8', port=53):
-    """Checks if socket can connect to a remote ip, Google DNS by default"""
-    return not check_site_status(ip, port)[1]
 
 
 def recently_emailed(emailed):
@@ -58,20 +88,32 @@ def recently_emailed(emailed):
     return time.time() - emailed < 14400
 
 
-def quiet_hours(start, stop, time_to_test=int(time.strftime("%H"))):
-    """Return True if time_to_test(int) is between start(int), stop(int), time_to_test(int)"""
-    if start > stop:
-        return time_to_test >= start or time_to_test <= stop
+def quiet_hours(quiet, local_hour=int(time.strftime("%H"))):
+    """Determines whether quiet hours are in effect based on local time
+
+    quiet(list) - contains two numbers, a start and end hour.
+
+    local_hour(time obj) - local hour using time module
+
+    Return False if quiet is False, or local_hour does not fall within quiet's hour range,
+    else Return True"""
+    if not quiet:
+        return False
     else:
-        return time_to_test >= start and time_to_test <= stop
+        start = quiet[0]
+        stop = quiet[1]
+        if start > stop:
+            return local_hour >= start or local_hour <= stop
+        else:
+            return local_hour >= start and local_hour <= stop
 
 
-def build_body(name, ip, port, down, advice):
+def build_body(name, ip, down, advice):
     """Return email body text (str) based on parameters name(str), down(long), ip(str), port(int), advice(string)"""
     body = "\n\n".join((
         f"WARNING! Site: {name.capitalize()} IS OFFLINE!",
         f"Last online {time.ctime(down)}",
-        f"Details :: could not connect to {ip} on port {port}",
+        f"Details :: could not connect to {ip}",
         "Please contact the site to verify if this is a known issue.",
         f"TIP: {advice}",
         "This alert was auto-generated.\nDo not reply"))
@@ -92,51 +134,51 @@ def send_email(body, creds):
     )
 
 
-def engine(sites, config, creds):
-    
-    port = int(config.get('port'))
-    retry = int(config.get('retry'))
-    check_status = partial(check_site_status, port=port, retry=retry)
-    quiet_start = int(config.get('quiet_start'))
-    quiet_stop = int(config.get('quiet_stop'))
+def engine(sites, creds, flags):
+    """ Runs the script
 
-    if internet_working():
-        logger.info('Scan started')
-        with multiprocessing.Pool(processes=10) as pool:
+    sites//creds (dict) - built by parse_Config
+
+    flags(argparse obj) - flags from cmd line
+
+    Return updated sites dict for next iteration
+    """
+    check_status = partial(check_site_status, port=flags.port, retry=flags.retry)
+    internet_down = partial(check_site_status, '8.8.8.8', 53, 1)
+    
+    if not internet_down()[1]:
+        LOGGER.info('Scan started')
+        with multiprocessing.Pool(processes=flags.processes) as pool:
             results = pool.map(check_status, sites.keys(),)
+
         for ip, down in results:
             if down:
                 if 'down' not in sites[ip]:
                     sites[ip]['down'] = down
-                if not quiet_hours(quiet_start, quiet_stop):
+                if not quiet_hours(flags.quiet):
                     if not recently_emailed(sites[ip].get('emailed', 0)):
-                        body = build_body(sites[ip]['name'], ip, port, sites[ip]['down'], creds['advice'])
+                        body = build_body(sites[ip]['name'], ip, sites[ip]['down'], creds['advice'])
                         send_email(body, creds)
                         sites[ip]['emailed'] = time.time()
-                        logger.info(f"{sites[ip]['name']} down. Email sent")
+                        LOGGER.info(f"{sites[ip]['name'].capitalize()} down. Email sent")
                 else:
-                    logger.info(
+                    LOGGER.info(
                         f"{sites[ip]['name']} down, but quiet hours in effect"
                         )
             elif not down and 'down' in sites[ip]:
                 sites[ip].pop('down')
     else:
-        logger.error("Google unreachable. Check internet connection.")
+        LOGGER.error("Google unreachable. Check internet connection.")
     return sites
 
 
-def main(config_file):
-
-    sites, config, email_creds = parse_config(config_file)
+def main(flags):
+    sites, email = parse_config(flags.config)
     while True:
-        sites = engine(sites, config, email_creds)
-        time.sleep(900)
+        sites = engine(sites, email, flags)
+        time.sleep(flags.sleep)
 
 
 if __name__ == '__main__':
-    from argparse import ArgumentParser
-    parser = ArgumentParser()
-    parser.add_argument('configuration_file', nargs='?')
-    args = parser.parse_args()
-    config_file = (args.configuration_file or 'config.ini')
-    main(config_file)
+    flags = parse_args()
+    main(flags)

@@ -11,11 +11,6 @@ from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
 
-try:
-    import argparse
-    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
-except ImportError:
-    flags = None
 
 # If modifying these scopes, delete your previously saved credentials
 # at ~/.credentials/gmail-python-quickstart.json
@@ -23,8 +18,15 @@ SCOPES = 'https://www.googleapis.com/auth/gmail.send'
 CLIENT_SECRET_FILE = 'client_secret_email.json'
 APPLICATION_NAME = 'Sitecheck Alert System'
 
+def get_flags():
+    try:
+        import argparse
+        flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
+    except ImportError:
+        flags = None
+    return flags
 
-def get_credentials():
+def get_credentials(flags):
     """Gets valid user credentials from storage.
 
     If nothing has been stored, or if the stored credentials are invalid,
@@ -93,9 +95,10 @@ def createmessage(sender, to, subject, message_text):
     return {'raw': base64.urlsafe_b64encode(mes2.encode('utf-8')).decode('ascii')}
 
 
-def compose_and_send(sender, to, subject, message_text):
-    # Sends an email via the Gmail API
-    credentials = get_credentials()
+def compose_and_send(sender, to, subject, message_text, flags=None, credentials=False):
+    """Sends an email via the Gmail API. Return Message ID"""
+    if not credentials:
+        credentials = get_credentials(flags)
     http = credentials.authorize(httplib2.Http())
     service = discovery.build('gmail', 'v1', http=http)
     message = createmessage(sender, to, subject, message_text)
@@ -103,12 +106,17 @@ def compose_and_send(sender, to, subject, message_text):
 
 
 def main():
-    compose_and_send(from_email, to_email, subject, body)
+    flags = get_flags()
+    credentials = get_credentials(flags)
+    response = input("Do you want to send a test email? (Y/N)? ")
+    if response in ('Y', 'y'):
+        to_email = input('Enter the destination email address: ')
+        subject = 'SiteCheck Test Mail'
+        body = 'This is a test message to trigger the OAuth2 process'
+        compose_and_send('me', to_email, subject, body, flags, credentials)
+    print("Complete! Goodbye...")
+    
 
 
 if __name__ == '__main__':
-    from_email = input('Enter the from email address: ')
-    to_email = input('Enter the destination email address: ')
-    subject = 'SiteCheck Test Mail'
-    body = 'This is a test message to trigger the OAuth2 process'
     main()

@@ -4,17 +4,11 @@ NAME1 = 0.0.0.0
 NAME2 = 0.0.0.0
 NAME2 = 0.0.0.0
 
-
-[settings]
-# Choose a default port which is open at all sites
-port = 9111
-retry = 5
-quiet_start = 1
-quiet_stop = 5
-
 [email]
 # Replace Email to/from and subject
 from = foo@notarealemailaddress.local
 to = bar@notarealemailaddress.local
 subject = Emergency Scary Message
-advice = Follow up suggestions, contact info etc
+advice = Follow up suggestions, contact info etc. To use multiple
+  for this message, indent 2 spaces. So long as you keep indenting
+  this message will keep going.
