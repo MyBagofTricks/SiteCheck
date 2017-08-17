@@ -37,25 +37,27 @@ def parse_args():
     """Parses arguments to Return ArgumentParser object"""    
     import argparse
     parser = argparse.ArgumentParser(description="Sitecheck - Yet Another Port Scanner")
-    parser.add_argument("-c", "--config", 
-                        help="Configuration file - Default=config.ini",
-                        default="config.ini")
-    parser.add_argument("-p", "--port", type=int,
-                        help="Port to scan - Default=9111",
-                        default=9111)
-    parser.add_argument("-proc", "--processes", type=int,
-                        help="Number of processes to use - Default=3",
-                        default=3)
-    parser.add_argument("-q", "--quiet", type=int, nargs=2,
-                        help='Start and End of quiet hours Off by Default.\
-                        Format \"-q 1 5\"',
-                        default=False)
-    parser.add_argument("-r", "--retry", type=int,
-                        help="Number of retries before assuming site is down - Default=5",
-                        default=5)
-    parser.add_argument("-s", "--sleep", type=int,
-                        help="Time in seconds between scans - Default=900 (15min)",
-                        default=900)
+    parser.add_argument(
+        "-c", "--config",  help="Configuration file - Default=config.ini",
+        default="config.ini")
+    parser.add_argument(
+        "-p", "--port", type=int, help="Port to scan - Default=9111",
+        default=9111)
+    parser.add_argument(
+        "-proc", "--processes", type=int, help="Number of processes to use - Default=3",
+        default=3)
+    parser.add_argument(
+        "-q", "--quiet", type=int, nargs=2, 
+        help='Start and End of quiet hours Off by Default. Format \"-q 1 5\"',
+        default=False)
+    parser.add_argument(
+        "-r", "--retry", type=int, help="Number of retries before assuming site is down - Default=5",
+        default=5)
+    parser.add_argument(
+        "-s", "--sleep", type=int,help="Time in seconds between scans - Default=900 (15min)",
+        default=900)
+    parser.add_argument(
+        "-v", "--verbose", help="Verbose log output", action="store_true")
     return parser.parse_args()
     
 
@@ -179,4 +181,6 @@ def main(flags):
 
 if __name__ == '__main__':
     flags = parse_args()
+    if flags.verbose:
+        LOGGER.setLevel(logging.DEBUG)
     main(flags)
