@@ -1,17 +1,15 @@
-#!/usr/bin/env python3
-
-"""Sitecheck - Basic Port Scanner 
-Scans multiple sites by ip and a specified port
-Reads settings from config.ini
-"""
+#!/usr/bin/python36
+import asyncio
+import asyncore
+from concurrent.futures import ThreadPoolExecutor
 import configparser
 import logging
-import multiprocessing
-import socket
 import time
-from functools import partial
+from argparse import ArgumentParser
+from asyncio import Queue
+from collections import namedtuple
 
-import emailer
+import emailer as gmailhandler
 
 logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.CRITICAL)
 logging.getLogger('googleapiclient.discovery').setLevel(logging.CRITICAL)
@@ -19,22 +17,51 @@ logging.basicConfig(format='[%(asctime)s] [%(levelname)s] -- %(message)s')
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.INFO)
 
+scan_queue = Queue()
+email_queue = Queue()
+
+
+class Message:
+    """Builds an alert message with the ability to email it"""
+    def __init__(self, name, ip, port, down, advice):
+        self.name = name
+        self.ip = ip
+        self.down = down
+        self.port = port
+        self.advice = advice
+
+
+    async def send_email(self, creds):
+        """Sends an email using accompanying emailer module, using Gmail and Oauth2
+
+        creds(dict): dict with to and subject fields, from config.ini
+        """
+        self.body = "\n\n".join((
+            f"WARNING! Site: {self.name.capitalize()} has been offline since {time.ctime(self.down)}",
+            f"Details :: could not connect to {self.ip}",
+            "Please contact the site to verify if this is a known issue.",
+            f"TIP: {self.advice}",
+            "This alert was auto-generated.\nDo not reply"))
+        await asyncio.sleep(0)
+        gmailhandler.compose_and_send(creds['to'], creds['subject'], self.body)
+        
+
 
 def parse_config(config_file):
     """ Accepts INI file, returns sites(dict), creds(dict)"""
     config = configparser.SafeConfigParser()
     try:
         config.read(config_file)
-        sites = {ip: {'name': site} for site, ip in config['sites'].items()}
-        email = config['email']
+        email = dict(config.items('email'))
+        sites = {ip: {'name': name} for name, ip in config['sites'].items()}
     except Exception as err:
-        print(f'Error in {config_file} {err} Check formatting in config.ini.example')
+        LOGGER.info(f'Error in {config_file} {err} Check formatting in config.ini.example')
         raise SystemExit
     return sites, email
 
 
 def parse_args():
-    """Parses arguments to Return ArgumentParser object"""    
+    """Sets up command line arguments. Return ArgumentParser object"""    
     import argparse
     parser = argparse.ArgumentParser(description="Sitecheck - Yet Another Port Scanner")
     parser.add_argument(
@@ -54,42 +81,13 @@ def parse_args():
         "-r", "--retry", type=int, help="Number of retries before assuming site is down - Default=5",
         default=5)
     parser.add_argument(
-        "-s", "--sleep", type=int,help="Time in seconds between scans - Default=900 (15min)",
+        "-s", "--sleep", type=int, help="Time in seconds between scans - Default=900 (15min)",
         default=900)
     parser.add_argument(
         "-v", "--verbose", help="Verbose log output", action="store_true")
     return parser.parse_args()
+
     
-
-
-def check_site_status(ip, port, retry):
-    """ Attempts to connect to an ip with 10 retries if the ip/port are not responding
-
-    ip(str) - ip address of target
-
-    port(int) - port address to use
-
-    retry(int) - (optional) number of times to retry
-
-    Return time.time() if offline, True if online
-    """
-    LOGGER.debug(f"{ip:<16} Scanning")
-    for x in range(1, retry+1):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(10)
-            result = s.connect_ex((ip, port))
-        if not result:
-            LOGGER.debug(f'{ip:<16} Completed')
-            return ip, None
-        LOGGER.debug(f'{ip:<16} OFFLINE {x} of {retry}')
-    return ip, time.time()
-
-
-def recently_emailed(emailed):
-    """Return True if emailed(float epoc time) is less than 4hours ago, else False"""
-    return time.time() - emailed < 14400
-
-
 def quiet_hours(quiet, local_hour=int(time.strftime("%H"))):
     """Determines whether quiet hours are in effect based on local time
 
@@ -110,77 +108,99 @@ def quiet_hours(quiet, local_hour=int(time.strftime("%H"))):
             return local_hour >= start and local_hour <= stop
 
 
-def build_body(name, ip, down, advice):
-    """Return email body text (str) based on parameters name(str), down(long), ip(str), port(int), advice(string)"""
-    body = "\n\n".join((
-        f"WARNING! Site: {name.capitalize()} IS OFFLINE!",
-        f"Last online {time.ctime(down)}",
-        f"Details :: could not connect to {ip}",
-        "Please contact the site to verify if this is a known issue.",
-        f"TIP: {advice}",
-        "This alert was auto-generated.\nDo not reply"))
-    return body
+async def check_site(ip, port, retry):
+    """ Attempts to connect to an ip with 2 retries if the ip/port are not responding
 
+    ip(str) - ip address of scan
 
-def send_email(body, creds):
-    """Assembles and sends an email
+    port(int) - port to scan
 
-    body(str) - body text of the e-mail
+    retry(int) - (optional) number of times to retry
 
-    creds(dict) - contains to and subject fields
-
-    Returns the message id if sucessful
+    Return time.time() if offline, None if online
     """
-    return emailer.compose_and_send(creds['to'], creds['subject'], body)
+    LOGGER.debug(f"[{ip:}:{port}] Scan Started")
+    for iteration in range(retry):
+        await asyncio.sleep(0)
+        fut = asyncio.open_connection(ip, port)
+        try:
+            reader, writer = await asyncio.wait_for(fut, timeout=5)
+            return None
+        except Exception as exc:
+            pass
+        finally:
+            fut.close()
+    LOGGER.debug(f'[{ip}:{port}] Connection Failed!')
+    return time.time()
 
 
-def engine(sites, creds, flags):
-    """ Runs the script
+async def email_worker(sites, email_config, quiet):
+    """Worker that sends emails every 4 hours if a site is down
 
-    sites//creds (dict) - built by parse_Config
+    sites(dict) - structure: ip: {name:name} - built from config.ini
 
-    flags(argparse obj) - flags from cmd line
-
-    Return updated sites dict for next iteration
+    email_config(dict) email settings built from config.ini
     """
-    check_status = partial(check_site_status, port=flags.port, retry=flags.retry)
-    internet_down = partial(check_site_status, '8.8.8.8', 53, 1)
-    
-    if not internet_down()[1]:
-        LOGGER.info('Scan started')
-        with multiprocessing.Pool(processes=flags.processes) as pool:
-            results = pool.map(check_status, sites.keys(),)
-
-        for ip, down in results:
-            if down:
-                if 'down' not in sites[ip]:
-                    sites[ip]['down'] = down
-                if not quiet_hours(flags.quiet):
-                    if not recently_emailed(sites[ip].get('emailed', 0)):
-                        body = build_body(sites[ip]['name'], ip, sites[ip]['down'], creds['advice'])
-                        send_email(body, creds)
-                        sites[ip]['emailed'] = time.time()
-                        LOGGER.info(f"{sites[ip]['name'].capitalize()} down. Email sent")
-                else:
-                    LOGGER.info(
-                        f"{sites[ip]['name']} down, but quiet hours in effect"
-                        )
-            elif not down and 'down' in sites[ip]:
-                sites[ip].pop('down')
-    else:
-        LOGGER.error("Google unreachable. Check internet connection.")
-    return sites
-
-
-def main(flags):
-    sites, email = parse_config(flags.config)
     while True:
-        sites = engine(sites, email, flags)
-        time.sleep(flags.sleep)
+        name, ip, down = await email_queue.get()
+        if not quiet_hours(quiet):
+            if sites[ip].get('emailed', 0) < time.time() - 14400:
+                Email = Message(name, ip, port, down, email_config['advice'])
+                await Email.send_email(email_config)
+                sites[ip]['emailed'] = time.time()
+                LOGGER.info(f"[{ip}::{port}] Down! Email sent!")
+        else:
+            LOGGER.debug(f"{ip} down but quiet hours in effect: {quiet}")
+
+
+async def schedule_worker(sites, port, retry, sleep):
+    """ Schedules scans
+
+    sites(dict) - structure: ip: {name:name} - built from config.ini
+
+    """
+    while True:
+        [await scan_queue.put((ip, port, retry)) for ip in sites.keys()]
+        LOGGER.info(f"{scan_queue.qsize()} sites queued to be scanned")
+        await asyncio.sleep(sleep)
+
+
+async def scan_worker(sites):
+    """Pulls queued scans from scan_queue
+
+    sites(dict) - built from config.ini
+    """
+    while True:
+        ip, port, retry = await scan_queue.get()
+        down = await check_site(ip, port, retry)
+        if down:
+            if 'down' not in sites[ip]:
+                sites[ip]['down'] = down
+            name = sites[ip]['name']
+            await email_queue.put((name, ip, down))
+        else:
+            if 'down' in sites[ip]:
+                sites[ip].pop('down')
+        asyncio.sleep(0)
 
 
 if __name__ == '__main__':
     flags = parse_args()
+    port = flags.port
+    retry = flags.retry
+    sleep = flags.sleep
+
     if flags.verbose:
         LOGGER.setLevel(logging.DEBUG)
-    main(flags)
+    sites, email_config = parse_config(flags.config)
+
+    loop = asyncio.get_event_loop()
+
+    scanners = [asyncio.ensure_future(scan_worker(sites)) for _ in range(flags.processes)]
+    emailer = asyncio.ensure_future(email_worker(sites, email_config, flags.quiet))
+    schedule_scan = asyncio.ensure_future(schedule_worker(sites, port, retry, sleep))
+
+    futures = asyncio.gather(schedule_scan, emailer, *scanners)
+
+    loop.run_until_complete(futures)
+    loop.close()
